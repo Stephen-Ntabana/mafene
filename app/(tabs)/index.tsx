@@ -21,6 +21,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Line } from "react-native-svg";
 import OnboardingScreen from "../../screens/OnboardingScreen";
+import { TurnDirection, useTurnDetector } from "../../hooks/useTurnDetector";
 
 // ------------------------------
 // Constants
@@ -284,6 +285,8 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
   const [arrived, setArrived] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(true);
   const [pedometerStatus, setPedometerStatus] = useState<"checking" | "active" | "fallback">("checking");
+  const [lastTurn, setLastTurn] = useState<TurnDirection | null>(null);
+  const turnClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -306,6 +309,24 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
   useEffect(() => { navRef.current.path = path; }, [path]);
   useEffect(() => { navRef.current.destination = selectedDestination; }, [selectedDestination]);
   useEffect(() => { navRef.current.arrived = arrived; }, [arrived]);
+
+  // Auto-clear the turn banner after 2.5 s
+  useEffect(() => {
+    if (!lastTurn) return;
+    if (turnClearTimer.current) clearTimeout(turnClearTimer.current);
+    turnClearTimer.current = setTimeout(() => setLastTurn(null), 2500);
+    return () => {
+      if (turnClearTimer.current) clearTimeout(turnClearTimer.current);
+    };
+  }, [lastTurn]);
+
+  // Turn detection — active only while navigation is in progress
+  useTurnDetector({
+    enabled: !!(userPos && selectedDestination && !arrived),
+    threshold: 45,
+    cooldown: 1000,
+    onTurnDetected: (dir) => setLastTurn(dir),
+  });
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -817,6 +838,22 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
             )}
           </View>
 
+          {lastTurn && (
+            <View style={[
+              styles.turnBanner,
+              lastTurn === "LEFT"  && styles.turnBannerLeft,
+              lastTurn === "RIGHT" && styles.turnBannerRight,
+              lastTurn === "UTURN" && styles.turnBannerUturn,
+            ]}>
+              <Text style={styles.turnBannerIcon}>
+                {lastTurn === "LEFT" ? "↰" : lastTurn === "RIGHT" ? "↱" : "↩"}
+              </Text>
+              <Text style={styles.turnBannerText}>
+                {lastTurn === "LEFT" ? "Turn LEFT" : lastTurn === "RIGHT" ? "Turn RIGHT" : "U-Turn"}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.actionRow}>
             <TouchableOpacity
               style={[
@@ -1233,4 +1270,21 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
   },
+
+  // Turn detection banner
+  turnBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    marginBottom: 10,
+    gap: 10,
+  },
+  turnBannerLeft:  { backgroundColor: "#1565C0" },
+  turnBannerRight: { backgroundColor: "#1B5E20" },
+  turnBannerUturn: { backgroundColor: "#B71C1C" },
+  turnBannerIcon: { fontSize: 26, color: "white" },
+  turnBannerText: { fontSize: 16, fontWeight: "bold", color: "white" },
 });
