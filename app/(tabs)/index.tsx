@@ -283,6 +283,7 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
   const [path, setPath] = useState<{ x: number; y: number }[]>([]);
   const [arrived, setArrived] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(true);
+  const [pedometerStatus, setPedometerStatus] = useState<"checking" | "active" | "fallback">("checking");
   const scrollViewRef = useRef<ScrollView>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -290,6 +291,8 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
   const STEP_LENGTH_PX = 6;
   // Pixels accumulated from steps, spent against the distance to the next path node
   const pixelDebtRef = useRef(0);
+  // Pedometer gives cumulative steps since subscription — track last value to get delta
+  const lastPedometerStepsRef = useRef(0);
 
   // Mutable ref so the pedometer callback always reads fresh state
   // without needing to be re-subscribed on every render
@@ -495,11 +498,22 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
     };
 
     const start = async () => {
-      const available = await Pedometer.isAvailableAsync();
+      // ACTIVITY_RECOGNITION permission is required on Android 10+
+      const { status } = await Pedometer.requestPermissionsAsync();
+      const available = status === "granted" && await Pedometer.isAvailableAsync();
+
       if (available) {
-        sub = Pedometer.watchStepCount(({ steps }) => handleSteps(steps));
+        setPedometerStatus("active");
+        lastPedometerStepsRef.current = 0;
+        sub = Pedometer.watchStepCount(({ steps }) => {
+          // `steps` is cumulative since subscription — compute delta to avoid double-counting
+          const delta = steps - lastPedometerStepsRef.current;
+          lastPedometerStepsRef.current = steps;
+          if (delta > 0) handleSteps(delta);
+        });
       } else {
-        // Accelerometer fallback on devices without a hardware step counter
+        // Fallback: manual accelerometer step detection
+        setPedometerStatus("fallback");
         Accelerometer.setUpdateInterval(200);
         let lastY = 0;
         sub = Accelerometer.addListener(({ y }) => {
@@ -620,6 +634,8 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
     setStepCount(0);
     setArrived(false);
     setShowStartPicker(true);
+    pixelDebtRef.current = 0;
+    lastPedometerStepsRef.current = 0;
     Alert.alert("🔄 Reset", "Select your starting position again.");
   };
 
@@ -778,6 +794,14 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
             <View style={styles.statBox}>
               <Text style={styles.statValue}>{stepCount}</Text>
               <Text style={styles.statLabel}>Steps</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>
+                {pedometerStatus === "active" ? "👣" : pedometerStatus === "fallback" ? "📡" : "⏳"}
+              </Text>
+              <Text style={styles.statLabel}>
+                {pedometerStatus === "active" ? "Pedometer" : pedometerStatus === "fallback" ? "Accel." : "..."}
+              </Text>
             </View>
             {userPos && (
               <View style={styles.statBox}>
