@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
-import { Accelerometer } from "expo-sensors";
+import { Accelerometer, Pedometer } from "expo-sensors";
 import { StatusBar } from "expo-status-bar";
 import * as TaskManager from "expo-task-manager";
 import React, { useEffect, useRef, useState } from "react";
