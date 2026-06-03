@@ -9,9 +9,9 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
-  Dimensions,
   Image,
   Linking,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,10 +26,9 @@ import OnboardingScreen from "../../screens/OnboardingScreen";
 // Constants
 // ------------------------------
 const MALL_NAME = "CHIC Mall - Main Entrance";
-const MALL_LAT = -1.942472;
-const MALL_LNG = 30.058417;
+const MALL_LAT = -1.976684;
+const MALL_LNG = 30.050527;
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
 // Notification setup
 Notifications.setNotificationHandler({
@@ -56,28 +55,42 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
       try {
         const storedMallLat = await AsyncStorage.getItem("mallLat");
         const storedMallLng = await AsyncStorage.getItem("mallLng");
-        const storedDestination = await AsyncStorage.getItem("destination");
-        if (storedMallLat && storedMallLng && storedDestination) {
-          const mallLat = parseFloat(storedMallLat);
-          const mallLng = parseFloat(storedMallLng);
-          const dist = calculateDistance(
-            lastLocation.coords.latitude,
-            lastLocation.coords.longitude,
-            mallLat,
-            mallLng,
-          );
-          if (dist <= 40 && dist >= 5) {
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: "📍 Approaching CHIC Mall",
-                body: `You are roughly ${Math.round(dist)} meters away. Tap to switch to indoor navigation.`,
-                data: { screen: "switchToIndoor" },
-              },
-              trigger: null,
-            });
-          }
+        if (!storedMallLat || !storedMallLng) return;
+
+        const dist = calculateDistance(
+          lastLocation.coords.latitude,
+          lastLocation.coords.longitude,
+          parseFloat(storedMallLat),
+          parseFloat(storedMallLng),
+        );
+
+        const lastNotifiedDist = await AsyncStorage.getItem("lastNotifiedDist");
+        const prev = lastNotifiedDist ? parseFloat(lastNotifiedDist) : Infinity;
+
+        // Arrived: within 15 m and haven't sent arrival notification yet
+        if (dist <= 15 && prev > 15) {
+          await AsyncStorage.setItem("lastNotifiedDist", dist.toString());
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "🏬 You've arrived at CHIC Mall!",
+              body: "Tap to switch to indoor navigation.",
+              data: { screen: "switchToIndoor" },
+            },
+            trigger: null,
+          });
+        } else if (dist <= 50 && dist > 15 && prev > 50) {
+          // Approaching: crossed the 50 m boundary for the first time
+          await AsyncStorage.setItem("lastNotifiedDist", dist.toString());
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "📍 Approaching CHIC Mall",
+              body: `You are ~${Math.round(dist)} m away. Tap to switch to indoor navigation.`,
+              data: { screen: "switchToIndoor" },
+            },
+            trigger: null,
+          });
         }
-      } catch (err) {}
+      } catch (_) {}
     }
   }
 });
@@ -104,8 +117,10 @@ function calculateDistance(
 // Home Screen
 // ------------------------------
 function HomeScreen({
+  onStartOutdoor,
   onSelectDestination,
 }: {
+  onStartOutdoor: () => Promise<void>;
   onSelectDestination: (
     dest: string,
     lat: number,
@@ -132,11 +147,24 @@ function HomeScreen({
     ]).start();
   }, []);
 
-  const openGoogleMaps = () => {
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${MALL_LAT},${MALL_LNG}&travelmode=driving`;
-    Linking.openURL(url).catch(() =>
-      Alert.alert("Error", "Could not open Google Maps"),
-    );
+  const openGoogleMaps = async (): Promise<void> => {
+    // On Android 11+, canOpenURL requires <queries> in the manifest and is unreliable
+    // for custom schemes. Instead, try the native scheme directly and fall back on error.
+    const nativeUrl =
+      Platform.OS === "android"
+        ? `google.navigation:q=${MALL_LAT},${MALL_LNG}&mode=d`
+        : `comgooglemaps://?daddr=${MALL_LAT},${MALL_LNG}&directionsmode=driving`;
+    const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${MALL_LAT},${MALL_LNG}&travelmode=driving`;
+
+    try {
+      await Linking.openURL(nativeUrl);
+    } catch {
+      try {
+        await Linking.openURL(webUrl);
+      } catch {
+        Alert.alert("Error", "Could not open Google Maps");
+      }
+    }
   };
 
   return (
@@ -178,9 +206,9 @@ function HomeScreen({
             <Text style={styles.mainCardSubtitle}>Main Entrance</Text>
             <TouchableOpacity
               style={styles.mainButton}
-              onPress={() => {
-                openGoogleMaps();
-                onSelectDestination(MALL_NAME, MALL_LAT, MALL_LNG, false);
+              onPress={async () => {
+                await onStartOutdoor();  // permissions & background tracking first
+                await openGoogleMaps();  // open Maps last so it stays in foreground
               }}
             >
               <Text style={styles.mainButtonText}>
@@ -255,9 +283,26 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
   const [path, setPath] = useState<{ x: number; y: number }[]>([]);
   const [arrived, setArrived] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(true);
-  const accelerometerSubscription = useRef<any>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // 1 step ≈ 6 px on the floor plan (tune if the map scale changes)
+  const STEP_LENGTH_PX = 6;
+  // Pixels accumulated from steps, spent against the distance to the next path node
+  const pixelDebtRef = useRef(0);
+
+  // Mutable ref so the pedometer callback always reads fresh state
+  // without needing to be re-subscribed on every render
+  const navRef = useRef({
+    userPos: null as { x: number; y: number; name: string } | null,
+    path: [] as { x: number; y: number }[],
+    destination: null as { x: number; y: number; name: string } | null,
+    arrived: false,
+  });
+  useEffect(() => { navRef.current.userPos = userPos; }, [userPos]);
+  useEffect(() => { navRef.current.path = path; }, [path]);
+  useEffect(() => { navRef.current.destination = selectedDestination; }, [selectedDestination]);
+  useEffect(() => { navRef.current.arrived = arrived; }, [arrived]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -408,18 +453,64 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
   }
 
   useEffect(() => {
-    Accelerometer.setUpdateInterval(100);
-    let lastY = 0;
-    const stepThreshold = 1.0;
-    const subscription = Accelerometer.addListener((data) => {
-      const { y } = data;
-      if (Math.abs(y - lastY) > stepThreshold && y > 0.8) {
-        setStepCount((prevCount) => prevCount + 1);
+    let sub: { remove: () => void } | null = null;
+
+    const handleSteps = (newSteps: number) => {
+      setStepCount((prev) => prev + newSteps);
+
+      const { userPos, path, destination, arrived } = navRef.current;
+      if (!userPos || !destination || arrived || path.length < 2) return;
+
+      pixelDebtRef.current += newSteps * STEP_LENGTH_PX;
+
+      // Find which path node the user is closest to
+      let closestIndex = 0;
+      let minDist = Infinity;
+      for (let i = 0; i < path.length; i++) {
+        const d = Math.hypot(userPos.x - path[i].x, userPos.y - path[i].y);
+        if (d < minDist) { minDist = d; closestIndex = i; }
       }
-      lastY = y;
-    });
-    accelerometerSubscription.current = subscription;
-    return () => subscription.remove();
+
+      const nextIndex = Math.min(closestIndex + 1, path.length - 1);
+      if (nextIndex === closestIndex) return;
+
+      const distToNext = Math.hypot(
+        path[nextIndex].x - userPos.x,
+        path[nextIndex].y - userPos.y,
+      );
+
+      if (pixelDebtRef.current >= distToNext) {
+        pixelDebtRef.current -= distToNext;
+        const newPos = { x: path[nextIndex].x, y: path[nextIndex].y, name: userPos.name };
+        navRef.current.userPos = newPos;
+
+        const distToDest = Math.hypot(newPos.x - destination.x, newPos.y - destination.y);
+        if (distToDest < 15) {
+          navRef.current.arrived = true;
+          setArrived(true);
+          Alert.alert("🎉 Arrived!", `You have reached ${destination.name}!`);
+        }
+        setUserPos(newPos);
+      }
+    };
+
+    const start = async () => {
+      const available = await Pedometer.isAvailableAsync();
+      if (available) {
+        sub = Pedometer.watchStepCount(({ steps }) => handleSteps(steps));
+      } else {
+        // Accelerometer fallback on devices without a hardware step counter
+        Accelerometer.setUpdateInterval(200);
+        let lastY = 0;
+        sub = Accelerometer.addListener(({ y }) => {
+          if (Math.abs(y - lastY) > 1.0 && y > 0.8) handleSteps(1);
+          lastY = y;
+        });
+      }
+    };
+
+    start();
+    return () => sub?.remove();
   }, []);
 
   const setStartingPosition = (location: (typeof LOCATIONS)[0]) => {
@@ -811,6 +902,58 @@ export default function App() {
     setScreen("home");
   };
 
+  const handleStartOutdoor = async () => {
+    await AsyncStorage.setItem("destination", MALL_NAME);
+    await AsyncStorage.setItem("mallLat", MALL_LAT.toString());
+    await AsyncStorage.setItem("mallLng", MALL_LNG.toString());
+    await AsyncStorage.removeItem("lastNotifiedDist");
+    setDestination(MALL_NAME);
+    setMallLat(MALL_LAT);
+    setMallLng(MALL_LNG);
+
+    const { status: notifStatus } = await Notifications.requestPermissionsAsync();
+    if (notifStatus !== "granted") {
+      Alert.alert(
+        "Notifications Required",
+        "Please allow notifications so we can alert you when you arrive at the mall.",
+      );
+      return;
+    }
+
+    try {
+      const { status: foreStatus } =
+        await Location.requestForegroundPermissionsAsync();
+      if (foreStatus === "granted") {
+        const { status: backStatus } =
+          await Location.requestBackgroundPermissionsAsync();
+        if (backStatus === "granted") {
+          const isRunning = await Location.hasStartedLocationUpdatesAsync(
+            BACKGROUND_LOCATION_TASK,
+          ).catch(() => false);
+          if (!isRunning) {
+            await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+              accuracy: Location.Accuracy.Balanced,
+              distanceInterval: 5,
+              deferredUpdatesInterval: 5000,
+              foregroundService: {
+                notificationTitle: "SeamlessNav is active",
+                notificationBody: "Monitoring your proximity to CHIC Mall.",
+              },
+            });
+          }
+        } else {
+          Alert.alert(
+            "Background Location Needed",
+            "Please allow 'Always' location access so we can notify you when you arrive at the mall.",
+          );
+        }
+      }
+    } catch (e) {
+      console.log("Background tracking setup error:", e);
+    }
+    // Stay on home screen — notification tap will navigate to indoor
+  };
+
   const handleSelectDestination = async (
     dest: string,
     lat: number,
@@ -825,30 +968,6 @@ export default function App() {
     setMallLng(lng);
     setSkipLocation(skip);
     setScreen("navigation");
-
-    if (!skip) {
-      try {
-        const { status: foreStatus } =
-          await Location.requestForegroundPermissionsAsync();
-        if (foreStatus === "granted") {
-          const { status: backStatus } =
-            await Location.requestBackgroundPermissionsAsync();
-          if (backStatus === "granted") {
-            await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-              accuracy: Location.Accuracy.Balanced,
-              distanceInterval: 5,
-              deferredUpdatesInterval: 5000,
-              foregroundService: {
-                notificationTitle: "SeamlessNav Tracking",
-                notificationBody: "Monitoring proximity to CHIC Mall.",
-              },
-            });
-          }
-        }
-      } catch (e) {
-        console.log("Background tracking setup error: ", e);
-      }
-    }
   };
 
   if (screen === "onboarding") {
@@ -856,7 +975,12 @@ export default function App() {
   }
 
   if (screen === "home") {
-    return <HomeScreen onSelectDestination={handleSelectDestination} />;
+    return (
+      <HomeScreen
+        onStartOutdoor={handleStartOutdoor}
+        onSelectDestination={handleSelectDestination}
+      />
+    );
   }
 
   return (
