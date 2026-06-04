@@ -1,0 +1,177 @@
+
+════════════════════════════════════════════════════════════════════
+  FLOOR 0 — Ground Story
+════════════════════════════════════════════════════════════════════
+Extents  X[-11783, 12017]  Y[-13254, 10446]
+
+── NAV_NODES: 7 ──
+  N0  DXF(-983, 2861)  px(194, 215)
+  N1  DXF(-5933, 4561)  px(105, 185)
+  N2  DXF(-983, -3349)  px(194, 327)
+  N3  DXF(-4583, -14)  px(129, 267)
+  N4  DXF(-2843, -339)  px(160, 273)
+  N5  DXF(-8088, -8809)  px(66, 425)
+  N6  DXF(-5952, 3549)  px(105, 203)
+
+── Corridor graph: 78 nodes, 78 edges ──
+  Intersections (deg≥3): 0
+  Endpoints (deg=1):     0
+  Path points (deg=2):   78
+
+JUNCTION POINTS (corridor intersections):
+
+ENDPOINTS (entrances/dead-ends):
+
+── TEXT LABELS ──
+  "washroom"  text→px(64,312)  nearest_node→px(73,302)
+  "washroom"  text→px(60,188)  nearest_node→px(73,185)
+  "spaces"  text→px(215,231)  nearest_node→px(194,232)
+  "cabinets"  text→px(318,191)  nearest_node→px(244,192)
+  "cabinets"  text→px(278,177)  nearest_node→px(244,192)
+  "cabinets"  text→px(358,178)  nearest_node→px(244,192)
+  "cabinets"  text→px(318,252)  nearest_node→px(244,192)
+  "cabinets"  text→px(317,268)  nearest_node→px(244,192)
+  "cabinets"  text→px(318,328)  nearest_node→px(319,415)
+  "cabinets"  text→px(318,342)  nearest_node→px(319,415)
+  "cabinets"  text→px(318,404)  nearest_node→px(319,415)
+  "cabinets"  text→px(154,404)  nearest_node→px(115,415)
+  "cabinets"  text→px(118,342)  nearest_node→px(95,336)
+  "cabinets"  text→px(56,403)  nearest_node→px(115,415)
+  "cabinets"  text→px(46,374)  nearest_node→px(43,336)
+  "cabinets"  text→px(46,146)  nearest_node→px(43,185)
+  "cabinets"  text→px(107,139)  nearest_node→px(115,185)
+  "cabinets"  text→px(121,145)  nearest_node→px(115,185)
+  "cabinets"  text→px(387,142)  nearest_node→px(244,113)
+  "cabinets"  text→px(325,142)  nearest_node→px(244,113)
+  "cabinets"  text→px(312,142)  nearest_node→px(244,113)
+  "cabinets"  text→px(174,191)  nearest_node→px(194,192)
+  "cabinets"  text→px(386,225)  nearest_node→px(244,192)
+  "cabinets"  text→px(386,299)  nearest_node→px(385,415)
+  "cabinets"  text→px(386,374)  nearest_node→px(385,415)
+
+── ALL CORRIDOR NODES (for WALKABLE_CONNECTIONS) ──
+
+
+────────────────────────────────────────────────────────────────────
+// ===== FLOOR0 — generated from DXF =====
+────────────────────────────────────────────────────────────────────
+
+export const LOCATIONS_FLOOR0 = [
+  { name: "Node 1", x: 194, y: 215, icon: "📍" },
+  { name: "Node 2", x: 105, y: 185, icon: "📍" },
+  { name: "Node 3", x: 194, y: 327, icon: "📍" },
+  { name: "Node 4", x: 129, y: 267, icon: "📍" },
+  { name: "Node 5", x: 160, y: 273, icon: "📍" },
+  { name: "Node 6", x: 66, y: 425, icon: "📍" },
+  { name: "Node 7", x: 105, y: 203, icon: "📍" },
+];
+
+export const JUNCTION_POINTS_FLOOR0 = [
+  { x: 95, y: 185, name: "P1" },
+  { x: 115, y: 185, name: "P2" },
+  { x: 115, y: 203, name: "P3" },
+  { x: 150, y: 203, name: "P4" },
+  { x: 194, y: 203, name: "P5" },
+  { x: 194, y: 228, name: "P6" },
+  { x: 150, y: 228, name: "P7" },
+  { x: 115, y: 228, name: "P8" },
+  { x: 95, y: 228, name: "P9" },
+  { x: 73, y: 302, name: "P10" },
+  { x: 73, y: 298, name: "P11" },
+  { x: 73, y: 255, name: "P12" },
+  { x: 92, y: 255, name: "P13" },
+  { x: 92, y: 298, name: "P14" },
+  { x: 92, y: 302, name: "P15" },
+  { x: 92, y: 336, name: "P16" },
+  { x: 73, y: 336, name: "P17" },
+  { x: 43, y: 336, name: "P18" },
+  { x: 43, y: 302, name: "P19" },
+  { x: 43, y: 185, name: "P20" },
+  { x: 73, y: 185, name: "P21" },
+  { x: 92, y: 185, name: "P22" },
+  { x: 92, y: 205, name: "P23" },
+  { x: 92, y: 228, name: "P24" },
+  { x: 92, y: 232, name: "P25" },
+  { x: 92, y: 251, name: "P26" },
+  { x: 73, y: 251, name: "P27" },
+  { x: 73, y: 232, name: "P28" },
+  { x: 73, y: 228, name: "P29" },
+  { x: 73, y: 205, name: "P30" },
+  { x: 43, y: 205, name: "P31" },
+  { x: 115, y: 415, name: "P32" },
+  { x: 198, y: 415, name: "P33" },
+  { x: 300, y: 415, name: "P34" },
+  { x: 319, y: 415, name: "P35" },
+  { x: 385, y: 415, name: "P36" },
+  { x: 398, y: 415, name: "P37" },
+  { x: 398, y: 433, name: "P38" },
+  { x: 398, y: 461, name: "P39" },
+  { x: 115, y: 461, name: "P40" },
+  { x: 95, y: 297, name: "P41" },
+  { x: 115, y: 297, name: "P42" },
+  { x: 115, y: 311, name: "P43" },
+  { x: 115, y: 315, name: "P44" },
+  { x: 115, y: 318, name: "P45" },
+  { x: 150, y: 318, name: "P46" },
+  { x: 194, y: 318, name: "P47" },
+  { x: 194, y: 336, name: "P48" },
+  { x: 150, y: 336, name: "P49" },
+  { x: 95, y: 336, name: "P50" },
+  { x: 194, y: 206, name: "P51" },
+  { x: 194, y: 192, name: "P52" },
+  { x: 194, y: 113, name: "P53" },
+  { x: 244, y: 113, name: "P54" },
+  { x: 244, y: 192, name: "P55" },
+  { x: 244, y: 411, name: "P56" },
+  { x: 194, y: 411, name: "P57" },
+  { x: 194, y: 253, name: "P58" },
+  { x: 194, y: 232, name: "P59" },
+  { x: 118, y: 257, name: "P60" },
+  { x: 118, y: 232, name: "P61" },
+  { x: 137, y: 232, name: "P62" },
+  { x: 181, y: 232, name: "P63" },
+  { x: 181, y: 253, name: "P64" },
+  { x: 177, y: 253, name: "P65" },
+  { x: 140, y: 253, name: "P66" },
+  { x: 140, y: 289, name: "P67" },
+  { x: 140, y: 293, name: "P68" },
+  { x: 177, y: 293, name: "P69" },
+  { x: 177, y: 314, name: "P70" },
+  { x: 118, y: 314, name: "P71" },
+  { x: 144, y: 289, name: "P72" },
+  { x: 144, y: 257, name: "P73" },
+  { x: 163, y: 257, name: "P74" },
+  { x: 172, y: 257, name: "P75" },
+  { x: 181, y: 257, name: "P76" },
+  { x: 181, y: 271, name: "P77" },
+  { x: 181, y: 289, name: "P78" },
+];
+
+export const WALKABLE_CONNECTIONS_FLOOR0 = [
+  { from: { x: 95, y: 185 }, to: { x: 115, y: 185 } },
+  { from: { x: 115, y: 185 }, to: { x: 115, y: 203 } },
+  { from: { x: 115, y: 203 }, to: { x: 150, y: 203 } },
+  { from: { x: 150, y: 203 }, to: { x: 194, y: 203 } },
+  { from: { x: 194, y: 203 }, to: { x: 194, y: 228 } },
+  { from: { x: 194, y: 228 }, to: { x: 150, y: 228 } },
+  { from: { x: 150, y: 228 }, to: { x: 115, y: 228 } },
+  { from: { x: 115, y: 228 }, to: { x: 95, y: 228 } },
+  { from: { x: 95, y: 228 }, to: { x: 95, y: 185 } },
+  { from: { x: 73, y: 302 }, to: { x: 73, y: 298 } },
+  { from: { x: 73, y: 298 }, to: { x: 73, y: 255 } },
+  { from: { x: 73, y: 255 }, to: { x: 92, y: 255 } },
+  { from: { x: 92, y: 255 }, to: { x: 92, y: 298 } },
+  { from: { x: 92, y: 298 }, to: { x: 92, y: 302 } },
+  { from: { x: 92, y: 302 }, to: { x: 92, y: 336 } },
+  { from: { x: 92, y: 336 }, to: { x: 73, y: 336 } },
+  { from: { x: 73, y: 336 }, to: { x: 43, y: 336 } },
+  { from: { x: 43, y: 336 }, to: { x: 43, y: 302 } },
+  { from: { x: 43, y: 302 }, to: { x: 73, y: 302 } },
+  { from: { x: 43, y: 185 }, to: { x: 73, y: 185 } },
+  { from: { x: 73, y: 185 }, to: { x: 92, y: 185 } },
+  { from: { x: 92, y: 185 }, to: { x: 92, y: 205 } },
+  { from: { x: 92, y: 205 }, to: { x: 92, y: 228 } },
+  { from: { x: 92, y: 228 }, to: { x: 92, y: 232 } },
+  { from: { x: 92, y: 232 }, to: { x: 92, y: 251 } },
+  { from: { x: 92, y: 251 }, to: { x: 73, y: 251 } },
+  { from: 
