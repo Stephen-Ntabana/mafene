@@ -5,10 +5,11 @@ import * as Notifications from "expo-notifications";
 import { Accelerometer, Pedometer } from "expo-sensors";
 import { StatusBar } from "expo-status-bar";
 import * as TaskManager from "expo-task-manager";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
+  Dimensions,
   Image,
   Linking,
   Platform,
@@ -20,8 +21,22 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Line } from "react-native-svg";
+import MappedInScreen from "../../screens/MappedInScreen";
 import OnboardingScreen from "../../screens/OnboardingScreen";
 import { TurnDirection, useTurnDetector } from "../../hooks/useTurnDetector";
+import {
+  CANVAS_FLOOR0, CANVAS_FLOOR1,
+  LOCATIONS_FLOOR0, LOCATIONS_FLOOR1,
+  JUNCTION_POINTS_FLOOR0, JUNCTION_POINTS_FLOOR1,
+  WALKABLE_CONNECTIONS_FLOOR0, WALKABLE_CONNECTIONS_FLOOR1,
+  DESTINATION_TO_JUNCTION_FLOOR0, DESTINATION_TO_JUNCTION_FLOOR1,
+} from "../../constants/floorData";
+
+// require() must be static — declare both images at module level
+const FLOOR_IMAGES = [
+  require("../../assets/images/floor0.png"),
+  require("../../assets/images/floor1.png"),
+] as const;
 
 // ------------------------------
 // Constants
@@ -267,9 +282,11 @@ function HomeScreen({
 }
 
 // ------------------------------
-// Floor Plan Navigation Screen
-// ------------------------------
+// Floor Plan Navigation Screen (reserved — step counter / turn detection)
+// Currently not rendered; NavigationScreen uses MappedInScreen directly.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function FloorPlanScreen({ onBack }: { onBack: () => void }) {
+  const [floor, setFloor] = useState<0 | 1>(0);
   const [stepCount, setStepCount] = useState(0);
   const [userPos, setUserPos] = useState<{
     x: number;
@@ -290,8 +307,8 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
   const scrollViewRef = useRef<ScrollView>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // 1 step ≈ 6 px on the floor plan (tune if the map scale changes)
-  const STEP_LENGTH_PX = 6;
+  // 1 step ≈ 22 px on the floor plan (scaled for 1581×737 image vs old 427×584)
+  const STEP_LENGTH_PX = 22;
   // Pixels accumulated from steps, spent against the distance to the next path node
   const pixelDebtRef = useRef(0);
   // Pedometer gives cumulative steps since subscription — track last value to get delta
@@ -336,145 +353,73 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
     }).start();
   }, []);
 
-  const LOCATIONS = [
-    { name: "Entrance 1", x: 120, y: 560, icon: "🚪" },
-    { name: "Entrance 2", x: 268, y: 560, icon: "🚪" },
-    { name: "Stairs 1", x: 108, y: 542, icon: "📶" },
-    { name: "Stairs 2", x: 85, y: 61, icon: "📶" },
-    { name: "Elevator 1", x: 106, y: 135, icon: "🔘" },
-    { name: "Elevator 2", x: 268, y: 531, icon: "🔘" },
-    { name: "Toilet 1 (Men)", x: 68, y: 500, icon: "🚻" },
-    { name: "Toilet 2 (Women)", x: 125, y: 92, icon: "🚺" },
-    { name: "Coffee Shop", x: 176, y: 286, icon: "☕" },
-    { name: "Restaurant", x: 199, y: 355, icon: "🍔" },
-  ];
+  // ── Floor-specific data ────────────────────────────────────────────────────
+  const CANVAS      = floor === 0 ? CANVAS_FLOOR0      : CANVAS_FLOOR1;
+  // Scale the floor plan to fit the phone screen (marginHorizontal 15 on each side)
+  const { width: screenW } = Dimensions.get("window");
+  const dispW = screenW - 30;
+  const dispH = Math.round(CANVAS.height * (dispW / CANVAS.width));
+  const LOCATIONS   = floor === 0 ? LOCATIONS_FLOOR0   : LOCATIONS_FLOOR1;
+  const JUNCTION_POINTS = floor === 0 ? JUNCTION_POINTS_FLOOR0 : JUNCTION_POINTS_FLOOR1;
+  const WALKABLE_CONNECTIONS = floor === 0 ? WALKABLE_CONNECTIONS_FLOOR0 : WALKABLE_CONNECTIONS_FLOOR1;
+  const DEST_TO_JCT = floor === 0 ? DESTINATION_TO_JUNCTION_FLOOR0 : DESTINATION_TO_JUNCTION_FLOOR1;
 
-  const JUNCTION_POINTS = [
-    { x: 269, y: 495, name: "J1" },
-    { x: 319, y: 490, name: "J2" },
-    { x: 324, y: 304, name: "J3" },
-    { x: 321, y: 164, name: "J4" },
-    { x: 187, y: 485, name: "J5" },
-    { x: 187, y: 329, name: "J6" },
-    { x: 187, y: 302, name: "J7" },
-    { x: 186, y: 240, name: "J8" },
-    { x: 189, y: 164, name: "J9" },
-    { x: 188, y: 151, name: "J10" },
-    { x: 123, y: 149, name: "J11" },
-    { x: 124, y: 100, name: "J12" },
-    { x: 75, y: 95, name: "J13" },
-    { x: 84, y: 67, name: "J14" },
-    { x: 74, y: 484, name: "J15" },
-    { x: 74, y: 330, name: "J16" },
-    { x: 74, y: 237, name: "J17" },
-    { x: 118, y: 490, name: "J18" },
-  ];
+  // Rebuild BFS graph whenever the floor changes
+  const graph = useMemo(() => {
+    const g = new Map<string, { x: number; y: number }[]>();
+    for (const c of WALKABLE_CONNECTIONS) {
+      const k1 = `${c.from.x},${c.from.y}`;
+      const k2 = `${c.to.x},${c.to.y}`;
+      if (!g.has(k1)) g.set(k1, []);
+      if (!g.has(k2)) g.set(k2, []);
+      g.get(k1)!.push({ x: c.to.x,   y: c.to.y   });
+      g.get(k2)!.push({ x: c.from.x, y: c.from.y });
+    }
+    return g;
+  }, [floor]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const DESTINATION_TO_JUNCTION: { [key: string]: { x: number; y: number } } = {
-    "Entrance 1": { x: 118, y: 490 },
-    "Entrance 2": { x: 269, y: 495 },
-    "Stairs 1": { x: 118, y: 490 },
-    "Stairs 2": { x: 84, y: 67 },
-    "Elevator 1": { x: 124, y: 100 },
-    "Elevator 2": { x: 269, y: 495 },
-    "Toilet 1 (Men)": { x: 74, y: 484 },
-    "Toilet 2 (Women)": { x: 84, y: 67 },
-    "Coffee Shop": { x: 187, y: 302 },
-    Restaurant: { x: 187, y: 329 },
-  };
-
-  const WALKABLE_CONNECTIONS = [
-    { from: { x: 269, y: 495 }, to: { x: 319, y: 490 } },
-    { from: { x: 319, y: 490 }, to: { x: 324, y: 304 } },
-    { from: { x: 324, y: 304 }, to: { x: 321, y: 164 } },
-    { from: { x: 321, y: 164 }, to: { x: 189, y: 164 } },
-    { from: { x: 189, y: 164 }, to: { x: 188, y: 151 } },
-    { from: { x: 188, y: 151 }, to: { x: 123, y: 149 } },
-    { from: { x: 123, y: 149 }, to: { x: 124, y: 100 } },
-    { from: { x: 124, y: 100 }, to: { x: 75, y: 95 } },
-    { from: { x: 75, y: 95 }, to: { x: 84, y: 67 } },
-    { from: { x: 269, y: 495 }, to: { x: 187, y: 485 } },
-    { from: { x: 187, y: 485 }, to: { x: 187, y: 329 } },
-    { from: { x: 187, y: 329 }, to: { x: 187, y: 302 } },
-    { from: { x: 187, y: 302 }, to: { x: 186, y: 240 } },
-    { from: { x: 186, y: 240 }, to: { x: 189, y: 164 } },
-    { from: { x: 324, y: 304 }, to: { x: 187, y: 302 } },
-    { from: { x: 269, y: 495 }, to: { x: 118, y: 490 } },
-    { from: { x: 74, y: 484 }, to: { x: 74, y: 330 } },
-    { from: { x: 74, y: 330 }, to: { x: 74, y: 237 } },
-    { from: { x: 74, y: 237 }, to: { x: 75, y: 95 } },
-    { from: { x: 74, y: 330 }, to: { x: 187, y: 329 } },
-    { from: { x: 74, y: 237 }, to: { x: 186, y: 240 } },
-    { from: { x: 118, y: 490 }, to: { x: 187, y: 485 } },
-    { from: { x: 118, y: 490 }, to: { x: 74, y: 484 } },
-  ];
-
-  const graph: Map<string, { x: number; y: number }[]> = new Map();
-  for (const conn of WALKABLE_CONNECTIONS) {
-    const key1 = `${conn.from.x},${conn.from.y}`;
-    const key2 = `${conn.to.x},${conn.to.y}`;
-    if (!graph.has(key1)) graph.set(key1, []);
-    if (!graph.has(key2)) graph.set(key2, []);
-    graph.get(key1)!.push({ x: conn.to.x, y: conn.to.y });
-    graph.get(key2)!.push({ x: conn.from.x, y: conn.from.y });
-  }
-
-  const WALKABLE_PATHS: { x1: number; y1: number; x2: number; y2: number }[] =
-    [];
-  for (const conn of WALKABLE_CONNECTIONS) {
-    WALKABLE_PATHS.push({
-      x1: conn.from.x,
-      y1: conn.from.y,
-      x2: conn.to.x,
-      y2: conn.to.y,
-    });
-    WALKABLE_PATHS.push({
-      x1: conn.to.x,
-      y1: conn.to.y,
-      x2: conn.from.x,
-      y2: conn.from.y,
-    });
-  }
+  const WALKABLE_PATHS = useMemo(() =>
+    WALKABLE_CONNECTIONS.flatMap(c => [
+      { x1: c.from.x, y1: c.from.y, x2: c.to.x,   y2: c.to.y   },
+      { x1: c.to.x,   y1: c.to.y,   x2: c.from.x, y2: c.from.y },
+    ]),
+  [floor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function findPathThroughJunctions(
-    startJunction: { x: number; y: number },
-    endJunction: { x: number; y: number },
+    start: { x: number; y: number },
+    end:   { x: number; y: number },
   ): { x: number; y: number }[] {
-    const queue: { x: number; y: number; path: { x: number; y: number }[] }[] =
-      [{ x: startJunction.x, y: startJunction.y, path: [startJunction] }];
-    const visited = new Set<string>();
-    visited.add(`${startJunction.x},${startJunction.y}`);
-
+    const queue = [{ x: start.x, y: start.y, path: [start] }];
+    const visited = new Set([`${start.x},${start.y}`]);
     while (queue.length > 0) {
-      const current = queue.shift()!;
-      if (
-        Math.hypot(current.x - endJunction.x, current.y - endJunction.y) < 10
-      ) {
-        return current.path;
-      }
-      const key = `${current.x},${current.y}`;
-      const neighbors = graph.get(key) || [];
-      for (const neighbor of neighbors) {
-        const neighborKey = `${neighbor.x},${neighbor.y}`;
-        if (!visited.has(neighborKey)) {
-          visited.add(neighborKey);
-          queue.push({
-            x: neighbor.x,
-            y: neighbor.y,
-            path: [...current.path, neighbor],
-          });
+      const cur = queue.shift()!;
+      if (Math.hypot(cur.x - end.x, cur.y - end.y) < 15) return cur.path;
+      for (const nb of graph.get(`${cur.x},${cur.y}`) ?? []) {
+        const nk = `${nb.x},${nb.y}`;
+        if (!visited.has(nk)) {
+          visited.add(nk);
+          queue.push({ x: nb.x, y: nb.y, path: [...cur.path, nb] });
         }
       }
     }
-    return [startJunction, endJunction];
+    return [start, end];
   }
 
-  function getJunctionForDestination(destinationName: string): {
-    x: number;
-    y: number;
-  } {
-    return DESTINATION_TO_JUNCTION[destinationName] || { x: 187, y: 302 };
+  function getJunctionForDestination(name: string): { x: number; y: number } {
+    return DEST_TO_JCT[name] ?? JUNCTION_POINTS[0];
   }
+
+  // Reset navigation whenever the user switches floors
+  const switchFloor = (f: 0 | 1) => {
+    setFloor(f);
+    setUserPos(null);
+    setSelectedDestination(null);
+    setPath([]);
+    setArrived(false);
+    setShowStartPicker(true);
+    pixelDebtRef.current = 0;
+    lastPedometerStepsRef.current = 0;
+  };
 
   useEffect(() => {
     let sub: { remove: () => void } | null = null;
@@ -626,10 +571,6 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const resetZoom = () => {
-    if (scrollViewRef.current)
-      scrollViewRef.current.setNativeProps({ zoomScale: 1 });
-  };
 
   const sendTestNotification = async () => {
     const { status } = await Notifications.requestPermissionsAsync();
@@ -668,10 +609,23 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.navTitle}>Indoor Navigation</Text>
-        <TouchableOpacity onPress={resetZoom} style={styles.fitButton}>
-          <Text style={styles.fitButtonText}>Fit</Text>
-        </TouchableOpacity>
+        <Text style={styles.navTitle}>
+          {floor === 0 ? "Ground Floor" : "First Floor"}
+        </Text>
+        <View style={styles.floorSwitcher}>
+          <TouchableOpacity
+            style={[styles.floorBtn, floor === 0 && styles.floorBtnActive]}
+            onPress={() => switchFloor(0)}
+          >
+            <Text style={styles.floorBtnText}>G</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.floorBtn, floor === 1 && styles.floorBtnActive]}
+            onPress={() => switchFloor(1)}
+          >
+            <Text style={styles.floorBtnText}>1</Text>
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
@@ -726,89 +680,12 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
           )}
         </View>
 
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.scrollView}
-          maximumZoomScale={3}
-          minimumZoomScale={1}
-          showsVerticalScrollIndicator={true}
-          showsHorizontalScrollIndicator={true}
-          pinchGestureEnabled={true}
-          bounces={true}
-        >
-          <View style={{ width: 427, height: 584 }}>
-            <Image
-              source={require("../../assets/images/floorplan.png")}
-              style={{ width: 427, height: 584, position: "absolute" }}
-              resizeMode="contain"
-              onError={(e) => console.log("Image error:", e.nativeEvent.error)}
-            />
-            <Svg style={{ width: 427, height: 584, position: "absolute" }}>
-              {WALKABLE_PATHS.map((p, idx) => (
-                <Line
-                  key={`walk-${idx}`}
-                  x1={p.x1}
-                  y1={p.y1}
-                  x2={p.x2}
-                  y2={p.y2}
-                  stroke="#4CAF50"
-                  strokeWidth="2"
-                  strokeOpacity="0.3"
-                />
-              ))}
-              {path.map(
-                (p, idx) =>
-                  idx < path.length - 1 && (
-                    <Line
-                      key={`nav-${idx}`}
-                      x1={p.x}
-                      y1={p.y}
-                      x2={path[idx + 1].x}
-                      y2={path[idx + 1].y}
-                      stroke="#0066CC"
-                      strokeWidth="3"
-                      strokeDasharray="6,4"
-                    />
-                  ),
-              )}
-              {JUNCTION_POINTS.map((j, idx) => (
-                <Circle
-                  key={`junc-${idx}`}
-                  cx={j.x}
-                  cy={j.y}
-                  r="3"
-                  fill="#888888"
-                  stroke="white"
-                  strokeWidth="1"
-                />
-              ))}
-              {LOCATIONS.map((dest, idx) => (
-                <Circle
-                  key={`dest-${idx}`}
-                  cx={dest.x}
-                  cy={dest.y}
-                  r="6"
-                  fill="#FF4444"
-                  stroke="white"
-                  strokeWidth="2"
-                />
-              ))}
-              {userPos && (
-                <>
-                  <Circle
-                    cx={userPos.x}
-                    cy={userPos.y}
-                    r="10"
-                    fill="#0066CC"
-                    stroke="white"
-                    strokeWidth="3"
-                  />
-                  <Circle cx={userPos.x} cy={userPos.y} r="4" fill="white" />
-                </>
-              )}
-            </Svg>
-          </View>
-        </ScrollView>
+        <View style={styles.floorPlanContainer}>
+          <MappedInScreen
+            destination={selectedDestination?.name}
+            onBack={onBack}
+          />
+        </View>
 
         <View style={styles.bottomPanel}>
           <View style={styles.statsRow}>
@@ -887,14 +764,8 @@ function FloorPlanScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
-function NavigationScreen({
-  skipLocation,
-  destination,
-  mallLat,
-  mallLng,
-  onBack,
-}: any) {
-  return <FloorPlanScreen onBack={onBack} />;
+function NavigationScreen({ destination, onBack }: any) {
+  return <MappedInScreen destination={destination} onBack={onBack} />;
 }
 
 // ------------------------------
@@ -1197,6 +1068,13 @@ const styles = StyleSheet.create({
   backToStartBtn: { marginTop: 12, alignItems: "center" },
   backToStartText: { color: "#0066CC", fontSize: 12, fontWeight: "500" },
 
+  floorPlanContainer: {
+    flex: 1,
+    marginHorizontal: 15,
+    marginVertical: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   scrollView: {
     flex: 1,
     backgroundColor: "#000",
@@ -1270,6 +1148,16 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
   },
+
+  // Floor switcher
+  floorSwitcher: { flexDirection: "row", gap: 6 },
+  floorBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center", justifyContent: "center",
+  },
+  floorBtnActive: { backgroundColor: "white" },
+  floorBtnText: { fontSize: 14, fontWeight: "bold", color: "#0066CC" },
 
   // Turn detection banner
   turnBanner: {
