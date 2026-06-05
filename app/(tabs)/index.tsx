@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
+  BackHandler,
   Image,
   Linking,
   Platform,
@@ -362,6 +363,17 @@ export default function App() {
     return () => subscription.remove();
   }, []);
 
+  useEffect(() => {
+    const handler = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (screen === "navigation") {
+        setScreen("home");
+        return true;
+      }
+      return false;
+    });
+    return () => handler.remove();
+  }, [screen]);
+
   const handleOnboardingFinish = async () => {
     await AsyncStorage.setItem("onboardingCompleted", "true");
     setScreen("home");
@@ -402,7 +414,7 @@ export default function App() {
               deferredUpdatesInterval: 5000,
               foregroundService: {
                 notificationTitle: "SeamlessNav is active",
-                notificationBody: "Monitoring your proximity to CHIC Mall.",
+                notificationBody: "Monitoring your proximity to Mateus House.",
               },
             });
           }
