@@ -1,4 +1,4 @@
-import { Pedometer, Magnetometer } from "expo-sensors";
+import { Pedometer, Magnetometer, Barometer } from "expo-sensors";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -10,8 +10,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const STEP_LENGTH_M  = 0.73;
-const TURN_THRESHOLD = 2.5; // degrees per update to register a turn
+const STEP_LENGTH_M    = 0.73;
+const TURN_THRESHOLD   = 2.5;   // degrees per update to register a turn
+const FLOOR_HEIGHT_M   = 4.0;   // commercial building floor height (Mateus House)
+const PRESSURE_PER_M   = 0.110; // hPa/m at Kigali altitude (~1567 m)
+const FLOOR_THRESHOLD  = 0.35;  // hPa minimum change to register a floor transition
 
 function getCardinal(deg: number): string {
   const d = ((deg % 360) + 360) % 360;
@@ -30,16 +33,20 @@ export default function StepCounterScreen({ onBack }: Props) {
   const [elapsed, setElapsed]               = useState(0);
   const [displayHeading, setDisplayHeading] = useState(0);
   const [turnStatus, setTurnStatus]         = useState<"left" | "right" | "straight">("straight");
+  const [floor, setFloor]                   = useState(0);
+  const [baroAvailable, setBaroAvailable]   = useState<boolean | null>(null);
 
   const pulseAnim      = useRef(new Animated.Value(1)).current;
   const compassAnim    = useRef(new Animated.Value(0)).current;
   const subscription   = useRef<ReturnType<typeof Pedometer.watchStepCount> | null>(null);
   const magSub         = useRef<ReturnType<typeof Magnetometer.addListener> | null>(null);
+  const baroSub        = useRef<ReturnType<typeof Barometer.addListener> | null>(null);
   const standingTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timerInterval  = useRef<ReturnType<typeof setInterval> | null>(null);
   const turnTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingAccum   = useRef(0);
   const prevRawHeading = useRef<number | null>(null);
+  const baselinePressure = useRef<number | null>(null);
 
   const compassRotation = compassAnim.interpolate({
     inputRange: [0, 360],
@@ -52,11 +59,18 @@ export default function StepCounterScreen({ onBack }: Props) {
     Animated.spring(pulseAnim, { toValue: 1, tension: 120, friction: 5, useNativeDriver: true }).start();
   };
 
+  const recalibrate = () => {
+    baselinePressure.current = null; // next baro reading becomes new ground floor
+    setFloor(0);
+  };
+
   const stopTracking = () => {
     subscription.current?.remove();
     subscription.current = null;
     magSub.current?.remove();
     magSub.current = null;
+    baroSub.current?.remove();
+    baroSub.current = null;
     if (standingTimer.current)  clearTimeout(standingTimer.current);
     if (timerInterval.current)  clearInterval(timerInterval.current);
     if (turnTimer.current)      clearTimeout(turnTimer.current);
@@ -115,9 +129,30 @@ export default function StepCounterScreen({ onBack }: Props) {
       }).start();
     });
 
+    // --- Barometer ---
+    Barometer.isAvailableAsync().then(setBaroAvailable);
+    Barometer.setUpdateInterval(1000); // 1 reading per second is enough for floors
+    baroSub.current = Barometer.addListener(({ pressure }) => {
+      if (baselinePressure.current === null) {
+        // First reading → calibrate as ground floor
+        baselinePressure.current = pressure;
+        setFloor(0);
+        return;
+      }
+
+      const pressureDiff = baselinePressure.current - pressure; // positive = higher altitude
+      const relativeAlt  = pressureDiff / PRESSURE_PER_M;
+
+      // Only update floor if change exceeds detection threshold
+      if (Math.abs(pressureDiff) >= FLOOR_THRESHOLD) {
+        setFloor(Math.round(relativeAlt / FLOOR_HEIGHT_M));
+      }
+    });
+
     return () => {
       subscription.current?.remove();
       magSub.current?.remove();
+      baroSub.current?.remove();
       if (standingTimer.current) clearTimeout(standingTimer.current);
       if (timerInterval.current) clearInterval(timerInterval.current);
       if (turnTimer.current)     clearTimeout(turnTimer.current);
@@ -136,6 +171,8 @@ export default function StepCounterScreen({ onBack }: Props) {
                   : turnStatus === "right" ? "↻ Turning Right"
                   : "→ Straight";
   const turnBg = turnStatus === "straight" ? "#EEEEEE" : "#E3F2FD";
+
+  const floorLabel = floor === 0 ? "Ground" : floor > 0 ? `Floor ${floor}` : `B${Math.abs(floor)}`;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -191,7 +228,6 @@ export default function StepCounterScreen({ onBack }: Props) {
                 <View style={styles.needleBottom} />
               </Animated.View>
 
-              {/* Center dot */}
               <View style={styles.centerDot} />
             </View>
             <Text style={styles.headingText}>
@@ -204,6 +240,26 @@ export default function StepCounterScreen({ onBack }: Props) {
         <View style={styles.distCard}>
           <Text style={styles.distValue}>{distLabel}</Text>
           <Text style={styles.distLabel}>distance travelled</Text>
+        </View>
+
+        {/* Floor indicator */}
+        <View style={styles.floorCard}>
+          <View style={styles.floorLeft}>
+            <Text style={styles.floorEmoji}>🏢</Text>
+            <View>
+              <Text style={styles.floorValue}>{floorLabel}</Text>
+              <Text style={styles.floorSub}>
+                {baroAvailable === false
+                  ? "barometer unavailable"
+                  : baroAvailable === null
+                  ? "checking barometer…"
+                  : "via barometer · 4 m/floor"}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.calibrateBtn} onPress={recalibrate}>
+            <Text style={styles.calibrateText}>⟳ Calibrate</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Stats */}
@@ -266,7 +322,7 @@ const styles = StyleSheet.create({
   warnText: { fontSize: 12, color: "#E65100", textAlign: "center" },
 
   badgeRow: { flexDirection: "row", gap: 10, marginBottom: 24 },
-  badge: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 30 },
+  badge:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 30 },
   badgeActive: { backgroundColor: "#E8F5E9" },
   badgeIdle:   { backgroundColor: "#EEEEEE" },
   badgeText:   { fontSize: 13, fontWeight: "600", color: "#333" },
@@ -315,13 +371,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  cardinal: {
-    position: "absolute",
-    fontSize: 11,
-    fontWeight: "bold",
-    color: "#555",
-  },
-  cardinalN: { top: 6,  alignSelf: "center", color: "#E53935" },
+  cardinal:  { position: "absolute", fontSize: 11, fontWeight: "bold", color: "#555" },
+  cardinalN: { top: 6, alignSelf: "center", color: "#E53935" },
   cardinalS: { bottom: 6, alignSelf: "center" },
   cardinalE: { right: 8, top: COMPASS_SIZE / 2 - 8 },
   cardinalW: { left: 8,  top: COMPASS_SIZE / 2 - 8 },
@@ -368,7 +419,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 40,
     borderRadius: 20,
-    marginBottom: 20,
+    marginBottom: 12,
     elevation: 3,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -378,7 +429,35 @@ const styles = StyleSheet.create({
   distValue: { fontSize: 26, fontWeight: "bold", color: "#0066CC" },
   distLabel: { fontSize: 12, color: "#999", marginTop: 2 },
 
-  statsRow: { flexDirection: "row", gap: 12, marginBottom: 28 },
+  floorCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "white",
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    marginBottom: 16,
+    width: "88%",
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+  },
+  floorLeft:  { flexDirection: "row", alignItems: "center", gap: 12 },
+  floorEmoji: { fontSize: 28 },
+  floorValue: { fontSize: 18, fontWeight: "bold", color: "#0066CC" },
+  floorSub:   { fontSize: 11, color: "#999", marginTop: 1 },
+  calibrateBtn: {
+    backgroundColor: "#E3F2FD",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  calibrateText: { fontSize: 12, fontWeight: "600", color: "#0066CC" },
+
+  statsRow: { flexDirection: "row", gap: 12, marginBottom: 24 },
   statBox: {
     backgroundColor: "white",
     paddingVertical: 12,
