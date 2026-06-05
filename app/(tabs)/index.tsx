@@ -21,6 +21,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import MappedInScreen from "../../screens/MappedInScreen";
 import OnboardingScreen from "../../screens/OnboardingScreen";
+import StepCounterScreen from "../../screens/StepCounterScreen";
 
 // ------------------------------
 // Constants
@@ -119,14 +120,11 @@ function calculateDistance(
 function HomeScreen({
   onStartOutdoor,
   onSelectDestination,
+  onOpenStepCounter,
 }: {
   onStartOutdoor: () => Promise<void>;
-  onSelectDestination: (
-    dest: string,
-    lat: number,
-    lng: number,
-    skipLocation: boolean,
-  ) => void;
+  onSelectDestination: (dest: string, lat: number, lng: number, skipLocation: boolean) => void;
+  onOpenStepCounter: () => void;
 }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -246,6 +244,14 @@ function HomeScreen({
           </LinearGradient>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.stepButton}
+          onPress={onOpenStepCounter}
+        >
+          <Text style={styles.stepButtonText}>👣 Step Counter & PDR Demo</Text>
+          <Text style={styles.stepButtonSub}>Test indoor tracking algorithms</Text>
+        </TouchableOpacity>
+
         <View style={styles.featuresGrid}>
           <View style={styles.featureCard}>
             <Text style={styles.featureIcon}>📍</Text>
@@ -305,7 +311,7 @@ function NavigationScreen({ destination, onBack }: { destination: string; onBack
 // APP MAIN
 // ------------------------------
 export default function App() {
-  const [screen, setScreen] = useState<"home" | "navigation" | "onboarding">(
+  const [screen, setScreen] = useState<"home" | "navigation" | "onboarding" | "stepcounter">(
     "onboarding",
   );
   const [skipLocation, setSkipLocation] = useState(false);
@@ -461,7 +467,12 @@ export default function App() {
         <HomeScreen
           onStartOutdoor={handleStartOutdoor}
           onSelectDestination={handleSelectDestination}
+          onOpenStepCounter={() => setScreen("stepcounter")}
         />
+      )}
+
+      {screen === "stepcounter" && (
+        <StepCounterScreen onBack={() => setScreen("home")} />
       )}
 
       {/* Keep WebView alive between visits — only hide, never unmount */}
@@ -606,5 +617,23 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 10,
   },
+
+  stepButton: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 16,
+    alignItems: "center",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    borderLeftWidth: 4,
+    borderLeftColor: "#0066CC",
+  },
+  stepButtonText: { fontSize: 15, fontWeight: "bold", color: "#333" },
+  stepButtonSub:  { fontSize: 11, color: "#999", marginTop: 3 },
 
 });
