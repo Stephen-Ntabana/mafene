@@ -85,6 +85,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ef96a24e-b06c-40c9-9f6d-abf5fa30e24b"
+      }
+    },
+    "owner": "stephen_ntabana"
   }
 }
