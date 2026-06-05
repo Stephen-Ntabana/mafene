@@ -4,6 +4,7 @@ import {
     Animated,
     Dimensions,
     FlatList,
+    Image,
     StatusBar,
     StyleSheet,
     Text,
@@ -17,47 +18,47 @@ const { width } = Dimensions.get("window");
 const onboardingData = [
   {
     id: "1",
-    title: "📍 Step 1: Choose Your Destination",
+    title: "Step 1: Choose Your Destination",
     description:
-      "Tap on CHIC Mall to start outdoor navigation. Google Maps will open with directions to the mall entrance.",
+      "Tap 'Start Outdoor Navigation' to begin. Google Maps will open with directions to Mateus House.",
     icon: "🗺️",
     gradientColors: ["#0066CC", "#0055AA"] as const,
   },
   {
     id: "2",
-    title: "🚗 Step 2: Follow Google Maps",
+    title: "Step 2: Follow Google Maps",
     description:
-      "Drive or walk to the mall using Google Maps. The app runs in the background tracking your location.",
+      "Drive or walk to Mateus House using Google Maps. SeamlessNav runs in the background tracking your location.",
     icon: "🚗",
     gradientColors: ["#4CAF50", "#388E3C"] as const,
   },
   {
     id: "3",
-    title: "🔔 Step 3: Get Notified",
+    title: "Step 3: Get Notified",
     description:
-      "When you are within 20 meters of the mall, you will receive a push notification. Tap it to enter indoor navigation.",
+      "When you are near Mateus House, you will receive a notification. Tap it to switch to indoor navigation.",
     icon: "🔔",
     gradientColors: ["#FF9800", "#F57C00"] as const,
   },
   {
     id: "4",
-    title: "📍 Step 4: Set Your Position",
+    title: "Step 4: Indoor Navigation",
     description:
-      "Tap on the floor plan where you are standing. Then select your destination (Coffee Shop, Restaurant, etc.).",
-    icon: "👆",
+      "The indoor map of Mateus House loads automatically. Search for your destination — a shop, washroom, or any point of interest.",
+    icon: "🏬",
     gradientColors: ["#9C27B0", "#7B1FA2"] as const,
   },
   {
     id: "5",
-    title: "🚶 Step 5: Start Walking",
+    title: "Step 5: Follow the Route",
     description:
-      "Walk while holding your phone. The app counts your steps and moves the blue dot along the path to your destination.",
+      "Follow the directions shown on the indoor map. The app will guide you to your destination floor by floor.",
     icon: "🚶",
     gradientColors: ["#2196F3", "#1976D2"] as const,
   },
   {
     id: "6",
-    title: "🎉 You're Ready!",
+    title: "You're Ready!",
     description: 'Tap "Get Started" to begin using SeamlessNav.',
     icon: "🚀",
     gradientColors: ["#E91E63", "#C2185B"] as const,
@@ -140,6 +141,15 @@ const OnboardingScreen = ({ onFinish }: { onFinish: () => void }) => {
         <Text style={styles.skipText}>Skip</Text>
       </TouchableOpacity>
 
+      <View style={styles.logoContainer}>
+        <Image
+          source={require("../assets/images/tajyire-logo.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Text style={styles.appName}>SeamlessNav</Text>
+      </View>
+
       <FlatList
         ref={flatListRef}
         data={onboardingData}
@@ -188,6 +198,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0f3460",
+  },
+  logoContainer: {
+    alignItems: "center",
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+  },
+  appName: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "bold",
+    marginTop: 6,
+    letterSpacing: 1,
   },
   skipButton: {
     position: "absolute",

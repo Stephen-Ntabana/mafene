@@ -21,6 +21,7 @@ export default function MappedInScreen({ destination, onBack }: Props) {
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading]   = useState(true);
   const [error,   setError]     = useState(false);
+  const hasLoaded = useRef(false);
 
   // Build URL — if a destination is passed we append it so Mappedin can
   // pre-fill the search / start directions automatically.
@@ -55,10 +56,12 @@ export default function MappedInScreen({ destination, onBack }: Props) {
           style={styles.webview}
           javaScriptEnabled
           domStorageEnabled
+          cacheEnabled
+          cacheMode="LOAD_CACHE_ELSE_NETWORK"
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
-          onLoadStart={() => { setLoading(true); setError(false); }}
-          onLoadEnd={() => setLoading(false)}
+          onLoadStart={() => { if (!hasLoaded.current) { setLoading(true); setError(false); } }}
+          onLoadEnd={() => { hasLoaded.current = true; setLoading(false); }}
           onError={() => { setLoading(false); setError(true); }}
           onHttpError={() => { setLoading(false); setError(true); }}
         />
